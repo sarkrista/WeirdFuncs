@@ -86,12 +86,14 @@ public:
 		HMODULE hCoop = nullptr;
 		for (int i = 0; i < 100; i++) {
 			hCoop = GetModuleHandleA("coop.asi");
-			if (hCoop) break;
+			if (hCoop)
+				break;
 			Sleep(100);
 		}
 		if (log) { fprintf(log, "2. coop.asi handle: 0x%p\n", hCoop); fflush(log); }
 		if (!hCoop) {
-			if (log) fclose(log);
+			if (log)
+				fclose(log);
 			return 0;
 		}
 		Sleep(500);
