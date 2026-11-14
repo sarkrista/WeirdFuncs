@@ -1,0 +1,30 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.6.11828.311 oobstable
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WeirdFuncs", "WeirdFuncs.vcxproj", "{BFC045A7-AB78-87F4-1480-6050005722E5}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{39766CF2-A610-46AE-9E8C-C5D22E19C6EC}"
+	ProjectSection(SolutionItems) = preProject
+		..\.gitignore = ..\.gitignore
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BFC045A7-AB78-87F4-1480-6050005722E5}.Debug|Win32.ActiveCfg = Debug|Win32
+		{BFC045A7-AB78-87F4-1480-6050005722E5}.Debug|Win32.Build.0 = Debug|Win32
+		{BFC045A7-AB78-87F4-1480-6050005722E5}.Release|Win32.ActiveCfg = Release|Win32
+		{BFC045A7-AB78-87F4-1480-6050005722E5}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {48BF577E-4FF2-4A62-A7C9-DC6CA930047F}
+	EndGlobalSection
+EndGlobal
