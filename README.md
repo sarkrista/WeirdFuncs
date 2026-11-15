@@ -4,7 +4,7 @@ A simple script written for personal use, may come in handy for somebody as well
 
 ## Commands
 
-* `/droparmor` — Drops armor.
+* `/droparmor` — Drops armor. You can drop 100% full armor only, otherwise it requires logic I'm lazy to work through.
 * `/dropmoney <amount>` — Drops the specified amount of money.
 * `/dropgun <ammo>` — Drops your current weapon. The `ammo` parameter is optional; if omitted, all ammo will be dropped.
 * `/skin <id>` — Changes your character's skin to the specified ID. Better not to change clothes, tattoos, haircut while this is active...
