@@ -13,12 +13,12 @@ A simple script written for personal use, may come in handy for somebody as well
   * The vehicle must belong to you (get into the car at least once to claim ownership).
 
 ## Installation
-Drop WeirdFuncsSA.asi in the root game directory.
+Drop WeirdFuncsSA.asi in the root game directory. Also make sure you fetched compatible with original mod version.
 
 ## Contributing & Issues
 
 Bug reports and feature suggestions are welcome. However, unless a bug is game-breaking or an idea really catches my eye, it's unlikely to be implemented.
-Attach weird_log.txt from the root folder to your report please. Also make sure you fetched compatible with original mod version.
+Attach weird_log.txt from the root folder to your report please.
 
 ## License
 
