@@ -171,6 +171,11 @@ public:
 
 		// TODO: add animations ?
 		if (cmdText) {
+			if (strcmp(cmdText, "/droparmor") == 0) {
+				HandleDropArmorCommand();
+				return;
+			}
+
 			if (strcmp(cmdText, "/dropgun") == 0 || strncmp(cmdText, "/dropgun ", 9) == 0) {
 				const char* args = (strlen(cmdText) > 9) ? (cmdText + 9) : "";
 				DropCurrentWeapon(args);
@@ -194,7 +199,27 @@ public:
 				return;
 			}
 		}
+
 		OriginalHandleChatSubmit(text);
+	}
+
+	//////////////////////// /droparmor ////////////////////////
+	static void HandleDropArmorCommand() {
+		CPlayerPed* player = FindPlayerPed();
+		if (!player || player->m_nPedFlags.bInVehicle) {
+			SendLocalChat("Exit car", 0xFFFFAAAA);
+			return;
+		}
+
+		if (player->m_fArmour < 99.9f) {
+			SendLocalChat("Used armor", 0xFFFFAAAA);
+			return;
+		}
+
+		CVector pos = player->TransformFromObjectSpace(CVector(0.0f, 2.0f, 0.0f));
+		CPickups::GenerateNewOne(pos, 1242, 3, 0, 0, false, nullptr);
+
+		player->m_fArmour = 0.0f;
 	}
 
 	//////////////////////// /dropgun <ammo> ////////////////////////
