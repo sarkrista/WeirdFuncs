@@ -251,25 +251,25 @@ public:
 	//////////////////////// /dropmoney <amount> ////////////////////////
 	static void HandleDropMoneyCommand(const char* argsStr) {
 		if (!argsStr || strlen(argsStr) == 0) {
-			SendLocalChat("Set amount.", 0xFFFFAAAA);
+			SendLocalChat("Set amount", 0xFFFFAAAA);
 			return;
 		}
 
 		int amount = atoi(argsStr);
 		if (amount <= 0) {
-			SendLocalChat("Bad amount.", 0xFFFFAAAA);
+			SendLocalChat("Bad amount", 0xFFFFAAAA);
 			return;
 		}
 
 		CPlayerPed* player = FindPlayerPed();
 		if (!player || player->m_nPedFlags.bInVehicle) {
-			SendLocalChat("Exit car.", 0xFFFFAAAA);
+			SendLocalChat("Exit car", 0xFFFFAAAA);
 			return;
 		}
 
 		CPlayerInfo& playerInfo = CWorld::Players[CWorld::PlayerInFocus];
 		if (playerInfo.m_nMoney < amount) {
-			SendLocalChat("No money.", 0xFFFFAAAA);
+			SendLocalChat("No money", 0xFFFFAAAA);
 			return;
 		}
 
@@ -317,7 +317,7 @@ public:
 
 	static void HandlePaintCommand(const char* argsStr) {
 		if (g_PaintModeActive && (!argsStr || strlen(argsStr) == 0 || strncmp(argsStr, "cancel", 6) == 0)) {
-			CancelPaintMode("Canceled.");
+			CancelPaintMode("Canceled");
 			return;
 		}
 
@@ -366,7 +366,7 @@ public:
 		g_LastSprayTime = CTimer::m_snTimeInMilliseconds;
 		g_PaintModeActive = true;
 
-		SendLocalChat("Spray car.", 0xFFFFC864);
+		SendLocalChat("Spray car", 0xFFFFC864);
 	}
 
 	static void ProcessSprayPainting() {
@@ -378,18 +378,18 @@ public:
 			return;
 
 		if (player->m_nPedFlags.bInVehicle) {
-			CancelPaintMode("Canceled.");
+			CancelPaintMode("Canceled");
 			return;
 		}
 
 		if (CTimer::m_snTimeInMilliseconds - g_LastSprayTime > 10000) {
-			CancelPaintMode("Timed out.");
+			CancelPaintMode("Timed out");
 			return;
 		}
 
 		CWeapon& spraySlot = player->m_aWeapons[9];
 		if (spraySlot.m_eWeaponType != WEAPON_SPRAYCAN || spraySlot.m_nTotalAmmo <= 0) {
-			CancelPaintMode("No spray.");
+			CancelPaintMode("No spray");
 			return;
 		}
 
@@ -474,12 +474,12 @@ public:
 		int skinId = atoi(argsStr);
 
 		if (skinId < 0 || skinId > 311) {
-			SendLocalChat("Bad skin!", 0xFFFFAAAA);
+			SendLocalChat("Bad skin", 0xFFFFAAAA);
 			return;
 		}
 
 		if (!CModelInfo::GetModelInfo(skinId)) {
-			SendLocalChat("No model!", 0xFFFFAAAA);
+			SendLocalChat("No model", 0xFFFFAAAA);
 			return;
 		}
 
@@ -488,7 +488,7 @@ public:
 			return;
 
 		if (player->m_nPedFlags.bInVehicle) {
-			SendLocalChat("Exit car!", 0xFFFFAAAA);
+			SendLocalChat("Exit car", 0xFFFFAAAA);
 			return;
 		}
 
