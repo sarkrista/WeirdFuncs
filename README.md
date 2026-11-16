@@ -4,6 +4,7 @@ A simple script written for personal use, may come in handy for somebody as well
 
 ## Commands
 
+* `/whelp` — Prints commands list in chat.
 * `/droparmor` — Drops armor. You can drop 100% full armor only, otherwise it requires logic I'm lazy to work through.
 * `/dropmoney <amount>` — Drops the specified amount of money.
 * `/dropgun <ammo>` — Drops your current weapon. The `ammo` parameter is optional; if omitted, all ammo will be dropped.
@@ -11,9 +12,18 @@ A simple script written for personal use, may come in handy for somebody as well
 * `/paint <color1> <color2>` — Paints a vehicle using a spray can. 
   * You can skip a color slot by using `-` (e.g., `/paint - 1`) or just enter the first color.
   * The vehicle must belong to you (get into the car at least once to claim ownership).
+* `/sing` — Makes CJ hum a song.
+* `/taunt` — Makes CJ say some weird phrase.
+
+## Features
+Added unnecessary tuned Hermes spawn chance because I like Hermes. :›
+
+If you found one note that its unique headlights will disappear after world loaded. :‹
 
 ## Installation
-Drop WeirdFuncsSA.asi in the root game directory. Also make sure you fetched compatible with original mod version.
+Drop WeirdFuncsSA.asi in the root game directory.
+
+Also make sure you fetched compatible with original mod version.
 
 ## Contributing & Issues
 
