@@ -31,6 +31,7 @@
 #include "CGeneral.h"
 #include <map>
 #include <set>
+#include <cmath>
 
 using namespace plugin;
 
@@ -94,6 +95,11 @@ public:
 	static inline tHandleChatSubmit OriginalHandleChatSubmit = nullptr;
 	static inline tChatAdd OriginalChatAdd = nullptr;
 	static inline void* g_ChatInstance = nullptr;
+
+	// Vehicle distort
+	static inline bool  g_bEnableVehicles = false;
+	static inline float g_fVehSpeed = 0.012f;
+	static inline float g_fVehStrength = 0.25f;
 
 	// Paintings state
 	static inline bool g_PaintModeActive = false;
@@ -249,6 +255,15 @@ public:
 
 			if (strcmp(cmdText, "/whelp") == 0) {
 				HandleWeirdHelpCommand();
+				return;
+			}
+
+			if (strcmp(cmdText, "/distortcars") == 0) {
+				g_bEnableVehicles = !g_bEnableVehicles;
+				if (g_bEnableVehicles)
+					SendLocalChat("Vehicle distortion enabled", 0xFFFFAAAA);
+				else
+					SendLocalChat("Vehicle distortion disabled", 0xFFFFAAAA);
 				return;
 			}
 		}
@@ -812,6 +827,32 @@ public:
 		g_RareHermesSet.erase(vehicle);
 	}
 
+	//////////////////////// VEHICLE DISTORTION ////////////////////////
+	static void CalculateSquashScale(float speed, float strength, unsigned int offset, float& outScaleXY, float& outScaleZ) {
+		float time = (CTimer::m_snTimeInMilliseconds + offset) * speed;
+		outScaleZ = 1.0f + std::sin(time) * strength;
+		if (outScaleZ < 0.1f)
+			outScaleZ = 0.1f;
+		outScaleXY = 1.0f / std::sqrt(outScaleZ);
+	}
+
+	static void ApplyMatrixScale(RwMatrix* matrix, float scaleXY, float scaleZ) {
+		if (!matrix)
+			return;
+
+		matrix->right.x *= scaleXY;
+		matrix->right.y *= scaleXY;
+		matrix->right.z *= scaleXY;
+
+		matrix->up.x *= scaleXY;
+		matrix->up.y *= scaleXY;
+		matrix->up.z *= scaleXY;
+
+		matrix->at.x *= scaleZ;
+		matrix->at.y *= scaleZ;
+		matrix->at.z *= scaleZ;
+	}
+
 	//////////////////////// /whelp ////////////////////////
 	static void HandleWeirdHelpCommand() {
 		SendLocalChat("<WeirdFuncs Help>", 0xFFFFAAAA);
@@ -822,9 +863,9 @@ public:
 		SendLocalChat("/paint <color1> <color2> - use spray can; use '-' to skip first color", 0xFFFFAAAA);
 		SendLocalChat("/sing - random song humming", 0xFFFFAAAA);
 		SendLocalChat("/taunt - random phrase speaking", 0xFFFFAAAA);
+		SendLocalChat("/distortcars - applies funny squashing effect on vehicle models", 0xFFFFAAAA);
 		SendLocalChat("<For SA : COOP v0.3.3>", 0xFFFFAACC);
 	}
-
 
 	WeirdFuncs() {
 		CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
@@ -850,6 +891,21 @@ public:
 
 		Events::vehicleDtorEvent += [](CVehicle* vehicle) {
 			CleanupRareHermes(vehicle);
+			};
+
+		Events::vehicleRenderEvent.before += [](CVehicle* vehicle) {
+			if (!g_bEnableVehicles || !vehicle || !vehicle->m_pRwClump)
+				return;
+
+			RwFrame* frame = reinterpret_cast<RwFrame*>(vehicle->m_pRwClump->object.parent);
+			if (frame) {
+				float scaleXY, scaleZ;
+				CalculateSquashScale(g_fVehSpeed, g_fVehStrength, reinterpret_cast<unsigned int>(vehicle), scaleXY, scaleZ);
+
+				RwMatrix* matrix = RwFrameGetMatrix(frame);
+				ApplyMatrixScale(matrix, scaleXY, scaleZ);
+				RwFrameUpdateObjects(frame);
+			}
 			};
 
 		// TODO: display on original chat created?

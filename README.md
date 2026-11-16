@@ -14,6 +14,7 @@ A simple script written for personal use, may come in handy for somebody as well
   * The vehicle must belong to you (get into the car at least once to claim ownership).
 * `/sing` — Makes CJ hum a song.
 * `/taunt` — Makes CJ say some weird phrase.
+* `/distortcars` — Applies funny squashing effect on vehicle models.
 
 ## Features
 Added unnecessary tuned Hermes spawn chance because I like Hermes. :›
