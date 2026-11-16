@@ -13,21 +13,29 @@
 #include "CTimer.h"
 #include "CFont.h"
 #include "CStreaming.h"
+#include "CSprite.h"
 #include "CClothes.h"
 #include "CModelInfo.h"
+#include "CObject.h"
+#include "CPools.h"
+#include "CClumpModelInfo.h"
+#include "extensions/ScriptCommands.h"
+#include "CPlayerPed.h"
+#include "CMessages.h"
+#include "Fx_c.h"
+#include <unordered_set>
+#include "CPointLights.h"
+#include "CCoronas.h"
+#include "CVehicleModelInfo.h"
+#include "common.h"
+#include "CGeneral.h"
+#include <map>
+#include <set>
 
 using namespace plugin;
 
 class WeirdFuncs {
 public:
-	// Structure std::__1::basic_string (libc++ - 32-bit x86, 12 bytes)
-
-	// FIX: Calling coop::ui::Chat::Add causes crashes/truncation due to MSVC vs. Clang (libc++) 
-	// std::string ABI mismatch and a short signature collision (+0x3B90 vs +0xCB0F0). 
-	// Need to verify calling convention (__cdecl vs __thiscall) in Ghidra, resolve ui::TheChat(), 
-	// and allocate strings via coop.asi's native operator new.
-
-	// For now it truncates my messages to 10 chars
 	struct LibcxxString {
 		union {
 			struct {
@@ -37,7 +45,7 @@ public:
 			struct {
 				size_t cap;
 				size_t size;
-				const char* data;
+				char* data;
 			} l;
 		};
 
@@ -51,12 +59,30 @@ public:
 
 		LibcxxString(const char* str) {
 			memset(this, 0, sizeof(LibcxxString));
+			if (!str)
+				str = "";
 			size_t len = strlen(str);
-			if (len > 10)
-				len = 10;
-			s.size_and_flag = static_cast<uint8_t>(len << 1);
-			memcpy(s.data, str, len);
-			s.data[len] = '\0';
+
+			if (len <= 10) {
+				s.size_and_flag = static_cast<uint8_t>(len << 1);
+				memcpy(s.data, str, len + 1);
+			}
+			else {
+				size_t allocSize = (len + 16) & ~15;
+				char* buf = static_cast<char*>(HeapAlloc(GetProcessHeap(), 0, allocSize));
+				if (buf) {
+					memcpy(buf, str, len + 1);
+					l.cap = allocSize | 1;
+					l.size = len;
+					l.data = buf;
+				}
+			}
+		}
+
+		~LibcxxString() {
+			if ((s.size_and_flag & 1) && l.data) {
+				HeapFree(GetProcessHeap(), 0, l.data);
+			}
 		}
 	};
 
@@ -76,6 +102,14 @@ public:
 	static inline float g_PaintProgress = 0.0f;
 	static inline CVehicle* g_LastPaintedVeh = nullptr;
 	static inline unsigned int g_LastSprayTime = 0;
+
+	static inline const std::vector<unsigned short> g_SingSpeechIds = {
+		336
+	};
+
+	static inline const std::vector<unsigned short> g_TauntSpeechIds = {
+		47, 25, 16, 34, 122
+	};
 
 	static DWORD WINAPI InitThread(LPVOID) {
 		FILE* log = nullptr;
@@ -166,10 +200,12 @@ public:
 	}
 
 	//////////////////////// CUSTOM COMMANDS HANDLING ////////////////////////
+	// TODO: pipe custom /help instruction to original command
+	// TODO: fix chat size to fit all the text in there; make it scrollable probably?
 	static void __cdecl HookedHandleChatSubmit(const LibcxxString& text) {
 		const char* cmdText = text.c_str();
 
-		// TODO: add animations ?
+		// TODO: add animations for drop type commands?
 		if (cmdText) {
 			if (strcmp(cmdText, "/droparmor") == 0) {
 				HandleDropArmorCommand();
@@ -178,7 +214,7 @@ public:
 
 			if (strcmp(cmdText, "/dropgun") == 0 || strncmp(cmdText, "/dropgun ", 9) == 0) {
 				const char* args = (strlen(cmdText) > 9) ? (cmdText + 9) : "";
-				DropCurrentWeapon(args);
+				HandleDropCurrentWeaponCommand(args);
 				return;
 			}
 
@@ -198,6 +234,23 @@ public:
 				HandleSkinCommand(cmdText + 6);
 				return;
 			}
+
+			if (strcmp(cmdText, "/sing") == 0 || strncmp(cmdText, "/sing ", 6) == 0) {
+				const char* args = (strlen(cmdText) > 6) ? (cmdText + 6) : "";
+				HandleSpeechListCommand(args, g_SingSpeechIds);
+				return;
+			}
+
+			if (strcmp(cmdText, "/taunt") == 0 || strncmp(cmdText, "/taunt ", 7) == 0) {
+				const char* args = (strlen(cmdText) > 7) ? (cmdText + 7) : "";
+				HandleSpeechListCommand(args, g_TauntSpeechIds);
+				return;
+			}
+
+			if (strcmp(cmdText, "/whelp") == 0) {
+				HandleWeirdHelpCommand();
+				return;
+			}
 		}
 
 		OriginalHandleChatSubmit(text);
@@ -207,12 +260,12 @@ public:
 	static void HandleDropArmorCommand() {
 		CPlayerPed* player = FindPlayerPed();
 		if (!player || player->m_nPedFlags.bInVehicle) {
-			SendLocalChat("Exit car", 0xFFFFAAAA);
+			SendLocalChat("Exit the car to drop armor", 0xFFFFAAAA);
 			return;
 		}
 
 		if (player->m_fArmour < 99.9f) {
-			SendLocalChat("Used armor", 0xFFFFAAAA);
+			SendLocalChat("Armor is damaged thus it can't be dropped", 0xFFFFAAAA);
 			return;
 		}
 
@@ -223,7 +276,7 @@ public:
 	}
 
 	//////////////////////// /dropgun <ammo> ////////////////////////
-	static void DropCurrentWeapon(const char* argsStr = "") {
+	static void HandleDropCurrentWeaponCommand(const char* argsStr = "") {
 		CPlayerPed* player = FindPlayerPed();
 		if (!player || player->m_nPedFlags.bInVehicle)
 			return;
@@ -242,7 +295,7 @@ public:
 		if (argsStr && strlen(argsStr) > 0) {
 			int requestedAmmo = atoi(argsStr);
 			if (requestedAmmo <= 0) {
-				SendLocalChat("Bad ammo", 0xFFFFAAAA);
+				SendLocalChat("Ammo amount can't be a negative number", 0xFFFFAAAA);
 				return;
 			}
 
@@ -260,11 +313,31 @@ public:
 			CPickups::GenerateNewOne(pos, modelId, 3, ammoToDrop, 0, false, nullptr);
 		}
 
-		// TODO: probably better to pick next to dropped weapon instead of setting to fists?
 		if (dropAll) {
 			player->ClearWeapon(weaponType);
-			player->SetCurrentWeapon(WEAPON_UNARMED);
+
+			eWeaponType nextWeapon = WEAPON_UNARMED;
+			for (int slot = activeSlot + 1; slot < 13; ++slot) {
+				CWeapon& w = player->m_aWeapons[slot];
+				if (w.m_eWeaponType != WEAPON_UNARMED && w.m_nTotalAmmo > 0) {
+					nextWeapon = w.m_eWeaponType;
+					break;
+				}
+			}
+
+			if (nextWeapon == WEAPON_UNARMED) {
+				for (int slot = 1; slot < activeSlot; ++slot) {
+					CWeapon& w = player->m_aWeapons[slot];
+					if (w.m_eWeaponType != WEAPON_UNARMED && w.m_nTotalAmmo > 0) {
+						nextWeapon = w.m_eWeaponType;
+						break;
+					}
+				}
+			}
+
+			player->SetCurrentWeapon(nextWeapon);
 		}
+
 		else {
 			weapon.m_nTotalAmmo -= ammoToDrop;
 			if (weapon.m_nAmmoInClip > weapon.m_nTotalAmmo) {
@@ -276,26 +349,25 @@ public:
 	//////////////////////// /dropmoney <amount> ////////////////////////
 	static void HandleDropMoneyCommand(const char* argsStr) {
 		if (!argsStr || strlen(argsStr) == 0) {
-			SendLocalChat("Set amount", 0xFFFFAAAA);
+			SendLocalChat("Specify the exact amount of money", 0xFFFFAAAA);
 			return;
 		}
 
 		int amount = atoi(argsStr);
 		if (amount <= 0) {
-			SendLocalChat("Bad amount", 0xFFFFAAAA);
+			SendLocalChat("Money amount can't be a negative number", 0xFFFFAAAA);
 			return;
 		}
 
 		CPlayerPed* player = FindPlayerPed();
 		if (!player || player->m_nPedFlags.bInVehicle) {
-			SendLocalChat("Exit car", 0xFFFFAAAA);
+			SendLocalChat("Exit the car to drop money", 0xFFFFAAAA);
 			return;
 		}
 
 		CPlayerInfo& playerInfo = CWorld::Players[CWorld::PlayerInFocus];
 		if (playerInfo.m_nMoney < amount) {
-			SendLocalChat("No money", 0xFFFFAAAA);
-			return;
+			amount = playerInfo.m_nMoney;
 		}
 
 		playerInfo.m_nMoney -= amount;
@@ -305,10 +377,6 @@ public:
 	}
 
 	//////////////////////// /paint <color1> <color2> ////////////////////////
-	// PUBLIC FIX: same color changing
-	// PUBLIC FIX: police should not be touched
-	// PUBLIC FIX: painting processing bug (should be converting ammo to percentage)
-	// PUBLIC FIX: 200 ammo for each color
 	static void CancelPaintMode(const char* reasonMsg = nullptr) {
 		g_PaintModeActive = false;
 		g_PaintProgress = 0.0f;
@@ -341,8 +409,8 @@ public:
 	}
 
 	static void HandlePaintCommand(const char* argsStr) {
-		if (g_PaintModeActive && (!argsStr || strlen(argsStr) == 0 || strncmp(argsStr, "cancel", 6) == 0)) {
-			CancelPaintMode("Canceled");
+		if (g_PaintModeActive && (!argsStr || strlen(argsStr) == 0)) {
+			CancelPaintMode("Painting canceled manually");
 			return;
 		}
 
@@ -351,9 +419,8 @@ public:
 			return;
 
 		CWeapon& spraySlot = player->m_aWeapons[9];
-		if (spraySlot.m_eWeaponType != WEAPON_SPRAYCAN || spraySlot.m_nTotalAmmo < 80) {
-			//SendLocalChat("Need more spray", 0xFFFFAAAA);
-			SendLocalChat("No spray", 0xFFFFAAAA);
+		if (spraySlot.m_eWeaponType != WEAPON_SPRAYCAN || spraySlot.m_nTotalAmmo < 100) {
+			SendLocalChat("Need more spray (at least 100 units) to perform painting", 0xFFFFAAAA);
 			return;
 		}
 
@@ -364,7 +431,7 @@ public:
 			: 0;
 
 		if (parsed < 1) {
-			SendLocalChat("/paint c1", 0xFFFFAAAA);
+			SendLocalChat("/paint <color1>", 0xFFFFAAAA);
 			return;
 		}
 
@@ -372,12 +439,12 @@ public:
 		int c2 = -1;
 
 		if (!ParseColorArg(arg1, c1)) {
-			SendLocalChat("Color 0-127", 0xFFFFAAAA);
+			SendLocalChat("Only color IDs available are 0-127", 0xFFFFAAAA);
 			return;
 		}
 
 		if (parsed >= 2 && !ParseColorArg(arg2, c2)) {
-			SendLocalChat("Color 0-127", 0xFFFFAAAA);
+			SendLocalChat("Only color IDs available are 0-127", 0xFFFFAAAA);
 			return;
 		}
 
@@ -391,7 +458,7 @@ public:
 		g_LastSprayTime = CTimer::m_snTimeInMilliseconds;
 		g_PaintModeActive = true;
 
-		SendLocalChat("Spray car", 0xFFFFC864);
+		SendLocalChat("Spray the car", 0xFFFFC864);
 	}
 
 	static void ProcessSprayPainting() {
@@ -403,18 +470,18 @@ public:
 			return;
 
 		if (player->m_nPedFlags.bInVehicle) {
-			CancelPaintMode("Canceled");
+			CancelPaintMode("Painting canceled since you are busy right now...");
 			return;
 		}
 
 		if (CTimer::m_snTimeInMilliseconds - g_LastSprayTime > 10000) {
-			CancelPaintMode("Timed out");
+			CancelPaintMode("Painting canceled, timed out");
 			return;
 		}
 
 		CWeapon& spraySlot = player->m_aWeapons[9];
-		if (spraySlot.m_eWeaponType != WEAPON_SPRAYCAN || spraySlot.m_nTotalAmmo <= 0) {
-			CancelPaintMode("No spray");
+		if (spraySlot.m_nTotalAmmo <= 0) {
+			CancelPaintMode("Painting canceled, ran out of spray");
 			return;
 		}
 
@@ -468,27 +535,85 @@ public:
 	}
 
 	static void RenderPaintProgress() {
-		if (!g_PaintModeActive || g_PaintProgress <= 0.0f)
+		if (!g_PaintModeActive)
 			return;
 
-		char buf[32];
-		sprintf_s(buf, "Painting: %d%%", static_cast<int>(g_PaintProgress));
+		CPlayerPed* player = FindPlayerPed();
+		if (!player)
+			return;
+
+		CVector worldPos = player->GetPosition() + CVector(0.0f, 0.0f, 1.1f);
+		if (g_LastPaintedVeh) {
+			worldPos = g_LastPaintedVeh->GetPosition() + CVector(0.0f, 0.0f, 1.1f);
+		}
+		else {
+			CVector startPos = player->TransformFromObjectSpace(CVector(0.0f, 0.3f, 0.2f));
+			CVector endPos = player->TransformFromObjectSpace(CVector(0.0f, 3.0f, 0.0f));
+			CColPoint colPoint;
+			CEntity* hitEntity = nullptr;
+			if (CWorld::ProcessLineOfSight(startPos, endPos, colPoint, hitEntity, false, true, false, false, false, false, false, false)) {
+				if (hitEntity && hitEntity->m_nType == ENTITY_TYPE_VEHICLE) {
+					worldPos = hitEntity->GetPosition() + CVector(0.0f, 0.0f, 1.1f);
+				}
+			}
+		}
+
+		RwV3d rwWorld = { worldPos.x, worldPos.y, worldPos.z };
+		RwV3d screenPos;
+		float w, h;
+
+		float drawX = RsGlobal.maximumWidth * 0.5f;
+		float drawY = RsGlobal.maximumHeight * 0.80f;
+		if (CSprite::CalcScreenCoors(rwWorld, &screenPos, &w, &h, true, true)) {
+			drawX = screenPos.x;
+			drawY = screenPos.y;
+		}
+
+		char prevOutline = CFont::m_nFontOutline;
+		char prevOutlineSize = CFont::m_nFontOutlineSize;
+		CFont::m_nFontOutline = 1;
+		CFont::m_nFontOutlineSize = 1;
 
 		CFont::SetOrientation(ALIGN_CENTER);
-		CFont::SetColor(CRGBA(255, 200, 200, 255));
-		CFont::SetDropShadowPosition(1);
-		CFont::SetBackground(false, false);
-		CFont::SetScale(0.6f, 1.2f);
 		CFont::SetFontStyle(FONT_SUBTITLES);
-		CFont::PrintString(320.0f, 380.0f, buf);
+
+		CFont::SetDropColor(CRGBA(0, 0, 0, 255));
+		CFont::SetBackground(false, false);
+
+		int pct = static_cast<int>(g_PaintProgress);
+		if (pct > 100)
+			pct = 100;
+
+		char bufProgress[64];
+		sprintf_s(bufProgress, "Painting: %d%%", pct);
+		CFont::SetScale(0.45f, 0.95f);
+		CFont::SetColor(CRGBA(255, 222, 222, 255));
+		CFont::PrintString(drawX, drawY, bufProgress);
+
+		char c1Str[16], c2Str[16];
+		if (g_TargetColor1 >= 0) sprintf_s(c1Str, "%d", g_TargetColor1); else strcpy_s(c1Str, "Keep");
+		if (g_TargetColor2 >= 0) sprintf_s(c2Str, "%d", g_TargetColor2); else strcpy_s(c2Str, "Keep");
+
+		char bufColors[64];
+		sprintf_s(bufColors, "Color 1: %s | Color 2: %s", c1Str, c2Str);
+		CFont::SetScale(0.36f, 0.78f);
+		CFont::SetColor(CRGBA(233, 222, 222, 255));
+		CFont::PrintString(drawX, drawY + 22.0f, bufColors);
+
+		CFont::SetScale(0.33f, 0.72f);
+		CFont::SetColor(CRGBA(222, 200, 200, 220));
+		CFont::PrintString(drawX, drawY + 40.0f, "use '/paint' to cancel");
+
+		CFont::m_nFontOutline = prevOutline;
+		CFont::m_nFontOutlineSize = prevOutlineSize;
 	}
 
 	//////////////////////// /skin <id> ////////////////////////
-	// FIX: warn about skin breaking if try to change clothes or haircut with different from CJ
+	// TODO: warn about skin breaking if try to change clothes or haircut with different from CJ
 	// I'll leave this as unique funny one tho because other skins still will act normal on switch
 	// and broken one saves for the session :)
 
-	// TODO: /repairskin command ?
+	// TODO: /repairskin command?
 
 	static void HandleSkinCommand(const char* argsStr) {
 		if (!argsStr || strlen(argsStr) == 0) {
@@ -499,12 +624,12 @@ public:
 		int skinId = atoi(argsStr);
 
 		if (skinId < 0 || skinId > 311) {
-			SendLocalChat("Bad skin", 0xFFFFAAAA);
+			SendLocalChat("Skin ID is out of range (0-311)", 0xFFFFAAAA);
 			return;
 		}
 
 		if (!CModelInfo::GetModelInfo(skinId)) {
-			SendLocalChat("No model", 0xFFFFAAAA);
+			SendLocalChat("No model found for this ID", 0xFFFFAAAA);
 			return;
 		}
 
@@ -513,7 +638,7 @@ public:
 			return;
 
 		if (player->m_nPedFlags.bInVehicle) {
-			SendLocalChat("Exit car", 0xFFFFAAAA);
+			SendLocalChat("Exit the car to change the skin", 0xFFFFAAAA);
 			return;
 		}
 
@@ -531,9 +656,206 @@ public:
 		CStreaming::SetModelIsDeletable(skinId);
 	}
 
+	//////////////////////// /sing <id> ////////////////////////
+	//////////////////////// /taunt <id> ////////////////////////
+	// TODO: remove cooldown? ain't sure it's worth it, crash risks for such command
+	// TODO: add separate taunt IDs for driving state
+	static void HandleSpeechListCommand(const char* argsStr, const std::vector<unsigned short>& list) {
+		CPlayerPed* player = FindPlayerPed();
+		if (!player || list.empty())
+			return;
+
+		int index = -1;
+		if (argsStr && strlen(argsStr) > 0) {
+			index = atoi(argsStr);
+			// TODO: specify accurate IDs list to provide user rich info
+			if (index < 0 || index >= static_cast<int>(list.size())) {
+				SendLocalChat("Bad speech ID", 0xFFFFAAAA);
+				return;
+			}
+		}
+		else {
+			static bool seeded = false;
+			if (!seeded) {
+				srand(static_cast<unsigned int>(time(nullptr)));
+				seeded = true;
+			}
+			index = rand() % list.size();
+		}
+
+		unsigned short speechId = list[index];
+
+		player->Say(speechId, 0, 1.0f, true, true, false);
+	}
+
+	//////////////////////// RARE HERMES ////////////////////////
+	static inline std::map<CVehicle*, std::vector<CObject*>> g_RareHermesLights;
+	static inline std::set<CVehicle*> g_RareHermesSet;
+
+	static CObject* SpawnAndAttachLightPair(CVehicle* vehicle, int modelId, float offsetX, float offsetY, float offsetZ, float scale) {
+		if (!vehicle)
+			return nullptr;
+
+		int vehHandle = CPools::GetVehicleRef(vehicle);
+		if (vehHandle == -1)
+			return nullptr;
+
+		int objHandle = 0;
+		CVector pos = vehicle->GetPosition();
+		Command<Commands::CREATE_OBJECT>(modelId, pos.x, pos.y, pos.z, &objHandle);
+
+		CObject* lightObj = CPools::GetObject(objHandle);
+		if (!lightObj)
+			return nullptr;
+
+		lightObj->m_bUsesCollision = false;
+		lightObj->m_bLightObject = true;
+
+		Command<Commands::SET_OBJECT_SCALE>(objHandle, scale);
+		lightObj->UpdateRwFrame();
+
+		Command<Commands::ATTACH_OBJECT_TO_CAR>(
+			objHandle, vehHandle,
+			offsetX, offsetY, offsetZ,
+			0.0f, 0.0f, 0.0f
+		);
+
+		return lightObj;
+	}
+
+	static void SetupRareHermes(CVehicle* vehicle) {
+		// Init & basic tuning
+		if (!vehicle || vehicle->m_nModelIndex != 474 || g_RareHermesSet.count(vehicle))
+			return;
+
+		CVehicleModelInfo* vehModelInfo = static_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(vehicle->m_nModelIndex));
+		if (!vehModelInfo || !vehModelInfo->m_pVehicleStruct)
+			return;
+
+		g_RareHermesSet.insert(vehicle);
+
+		vehicle->m_nPrimaryColor = 1;
+		vehicle->m_nSecondaryColor = 3;
+		vehicle->m_vehicleAudio.m_settings.m_nRadioID = RADIO_RADIO_X;
+
+		vehicle->m_nOverrideLights = 1;
+		if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE) {
+			CAutomobile* autoVeh = static_cast<CAutomobile*>(vehicle);
+			autoVeh->m_damageManager.SetLightStatus(LIGHT_FRONT_LEFT, 1);
+			autoVeh->m_damageManager.SetLightStatus(LIGHT_FRONT_RIGHT, 1);
+		}
+
+		const int upgrades[] = { 1078, 1087, 1010 };
+		for (int upgId : upgrades) {
+			CStreaming::RequestModel(upgId, GAME_REQUIRED);
+		}
+		const int lightModelId = 1013;
+		CStreaming::RequestModel(lightModelId, GAME_REQUIRED);
+		CStreaming::LoadAllRequestedModels(false);
+
+		for (int upgId : upgrades) {
+			if (CStreaming::ms_aInfoForModel[upgId].m_nLoadState == LOADSTATE_LOADED) {
+				vehicle->AddVehicleUpgrade(upgId);
+				CStreaming::SetModelIsDeletable(upgId);
+			}
+		}
+
+		// Custom headlights
+		CVector headlightPos = vehModelInfo->m_pVehicleStruct->m_avDummyPos[0];
+		if (headlightPos.y == 0.0f) {
+			headlightPos = CVector(0.82f, 2.45f, -0.12f);
+		}
+
+		float posY = headlightPos.y - 0.10f;
+		float posZ = headlightPos.z;
+
+		std::vector<CObject*> objs;
+		if (auto* o1 = SpawnAndAttachLightPair(vehicle, lightModelId, 0.0f, posY, posZ, 1.0f)) objs.push_back(o1);
+		if (auto* o2 = SpawnAndAttachLightPair(vehicle, lightModelId, -0.26f, posY, posZ, 1.0f)) objs.push_back(o2);
+		if (auto* o3 = SpawnAndAttachLightPair(vehicle, lightModelId, 0.26f, posY, posZ, 1.0f)) objs.push_back(o3);
+
+		g_RareHermesLights[vehicle] = objs;
+		CStreaming::SetModelIsDeletable(lightModelId);
+	}
+
+	static void SetDealerDriver(CPed* driver) {
+		auto pedId = 87;
+
+		if (!driver || driver->IsPlayer() || driver->m_nModelIndex == pedId)
+			return;
+
+		CStreaming::RequestModel(pedId, GAME_REQUIRED);
+		CStreaming::LoadAllRequestedModels(false);
+
+		if (CStreaming::ms_aInfoForModel[pedId].m_nLoadState == LOADSTATE_LOADED) {
+			driver->SetModelIndex(pedId);
+			CStreaming::SetModelIsDeletable(pedId);
+		}
+	}
+
+	static void CleanupRareHermes(CVehicle* vehicle) {
+		if (!vehicle)
+			return;
+
+		auto it = g_RareHermesLights.find(vehicle);
+		if (it != g_RareHermesLights.end()) {
+			for (CObject* obj : it->second) {
+				if (obj && CPools::ms_pObjectPool->IsObjectValid(obj)) {
+					int objHandle = CPools::GetObjectRef(obj);
+					if (objHandle != -1) {
+						Command<Commands::DELETE_OBJECT>(objHandle);
+					}
+				}
+			}
+			g_RareHermesLights.erase(it);
+		}
+		g_RareHermesSet.erase(vehicle);
+	}
+
+	//////////////////////// /whelp ////////////////////////
+	static void HandleWeirdHelpCommand() {
+		SendLocalChat("<WeirdFuncs Help>", 0xFFFFAAAA);
+		SendLocalChat("/droparmor - works with full one only", 0xFFFFAAAA);
+		SendLocalChat("/dropgun <ammo> - if not specified, drops fully", 0xFFFFAAAA);
+		SendLocalChat("/dropmoney <amount> - drops money", 0xFFFFAAAA);
+		SendLocalChat("/skin <id> - sets skin", 0xFFFFAAAA);
+		SendLocalChat("/paint <color1> <color2> - use spray can; use '-' to skip first color", 0xFFFFAAAA);
+		SendLocalChat("/sing - random song humming", 0xFFFFAAAA);
+		SendLocalChat("/taunt - random phrase speaking", 0xFFFFAAAA);
+		SendLocalChat("<For SA : COOP v0.3.3>", 0xFFFFAACC);
+	}
+
+
 	WeirdFuncs() {
 		CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
 		Events::gameProcessEvent += ProcessSprayPainting;
 		Events::drawingEvent += RenderPaintProgress;
+
+		Events::vehicleSetModelEvent += [](CVehicle* vehicle, int modelId) {
+			CleanupRareHermes(vehicle);
+			if (modelId == 474 && CGeneral::GetRandomNumberInRange(0, 100) == 0) {
+				SetupRareHermes(vehicle);
+			}
+			};
+
+		Events::gameProcessEvent += []() {
+			for (CVehicle* vehicle : g_RareHermesSet) {
+				if (vehicle && CPools::ms_pVehiclePool->IsObjectValid(vehicle) && vehicle->m_pDriver) {
+					if (!vehicle->m_pDriver->IsPlayer() && vehicle->m_pDriver->m_nModelIndex != 87) {
+						SetDealerDriver(vehicle->m_pDriver);
+					}
+				}
+			}
+			};
+
+		Events::vehicleDtorEvent += [](CVehicle* vehicle) {
+			CleanupRareHermes(vehicle);
+			};
+
+		// TODO: display on original chat created?
+		//SendLocalChat("<WeirdFuncs>", 0xFFFFAACC);
+		//SendLocalChat("Use /whelp to check the list of commands", 0xFFFFAACC);
+
+		// TODO: add 1254 skull head accessory?
 	}
 } WeirdFuncsPlugin;
