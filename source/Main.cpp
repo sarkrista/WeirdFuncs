@@ -87,7 +87,7 @@ public:
 		}
 	};
 
-	static constexpr const char* scriptVersion = "v0.3.3";
+	static constexpr const char* scriptVersion = "v0.3.4";
 
 	typedef void(__cdecl* tHandleChatSubmit)(const LibcxxString& text);
 	typedef void(__thiscall* tChatAdd)(void* chatThis, const LibcxxString& text, uint32_t argb);
@@ -140,10 +140,12 @@ public:
 
 		// TODO: automatically pick pattern depending on coop version to keep compability
 		// v0.3.2
-		// uintptr_t addrChatSubmit = FindPattern("coop.asi", "\x55\x53\x57\x56\x83\xEC\x48\x8B\x74\x24\x5C", "xxxxxxxxxxx");
+		//uintptr_t addrChatSubmit = FindPattern("coop.asi", "\x55\x53\x57\x56\x83\xEC\x48\x8B\x74\x24\x5C", "xxxxxxxxxxx");
+		// v0.3.3
+		//uintptr_t addrChatSubmit = FindPattern("coop.asi", "\x55\x53\x57\x56\x83\xEC\x50\x8B\x74\x24\x64", "xxxxxxxxxxx");
 
 		uintptr_t addrChatAdd = FindPattern("coop.asi", "\x55\x89\xE5\x53\x57\x56\x83\xE4\xF8\x83\xEC\x28\x89\xCE", "xxxxxxxxxxxxxx");
-		uintptr_t addrChatSubmit = FindPattern("coop.asi", "\x55\x53\x57\x56\x83\xEC\x50\x8B\x74\x24\x64", "xxxxxxxxxxx");
+		uintptr_t addrChatSubmit = FindPattern("coop.asi", "\x55\x53\x57\x56\x83\xEC\x54\x8B\x74\x24\x68", "xxxxxxxxxxx");
 
 		if (log) {
 			fprintf(log, "3. addrChatAdd: 0x%X | addrChatSubmit: 0x%X\n", addrChatAdd, addrChatSubmit);
@@ -864,7 +866,7 @@ public:
 		SendLocalChat("/sing - random song humming", 0xFFFFAAAA);
 		SendLocalChat("/taunt - random phrase speaking", 0xFFFFAAAA);
 		SendLocalChat("/distortcars - applies funny squashing effect on vehicle models", 0xFFFFAAAA);
-		SendLocalChat("<For SA : COOP v0.3.3>", 0xFFFFAACC);
+		SendLocalChat("<For SA : COOP v0.3.4>", 0xFFFFAACC);
 	}
 
 	WeirdFuncs() {
