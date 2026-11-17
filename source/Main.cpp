@@ -535,10 +535,10 @@ public:
 				g_PaintProgress += 25.0f * deltaSeconds;
 
 				if (g_PaintProgress >= 100.0f) {
-					if (g_TargetColor1 >= 0) veh->m_nPrimaryColor = static_cast<unsigned char>(g_TargetColor1);
-					if (g_TargetColor2 >= 0) veh->m_nSecondaryColor = static_cast<unsigned char>(g_TargetColor2);
+					int c1 = (g_TargetColor1 >= 0) ? g_TargetColor1 : veh->m_nPrimaryColor;
+					int c2 = (g_TargetColor2 >= 0) ? g_TargetColor2 : veh->m_nSecondaryColor;
 
-					veh->UpdateRwFrame();
+					Command<Commands::CHANGE_CAR_COLOUR>(veh, c1, c2);
 
 					veh->m_nVehicleFlags.bHasBeenOwnedByPlayer = 1;
 					veh->m_nAlarmState = 0;
