@@ -8,7 +8,7 @@ A simple script written for personal use, may come in handy for somebody as well
 * `/droparmor` — Drops armor. You can drop 100% full armor only, otherwise it requires logic I'm lazy to work through.
 * `/dropmoney <amount>` — Drops the specified amount of money.
 * `/dropgun <ammo>` — Drops your current weapon. The `ammo` parameter is optional; if omitted, all ammo will be dropped.
-* `/skin <id>` — Changes your character's skin to the specified ID. Doesn't change voice so it's still possible to use /sing and /taunt commands with it. Better not to change clothes, tattoos, haircut while this is active...
+* `/skin <id>` — Changes your character's skin to the specified ID. Doesn't change voice so it's still possible to use `/sing` and `/taunt` commands with it. Better not to change clothes, tattoos, haircut while this is active...
 * `/paint <color1> <color2>` — Paints a vehicle using a spray can. 
   * You can skip a color slot by using `-` (e.g., `/paint - 1`) or just enter the first color.
   * The vehicle must belong to you (get into the car at least once to claim ownership).
