@@ -931,7 +931,7 @@ public:
 
 		Events::vehicleSetModelEvent += [](CVehicle* vehicle, int modelId) {
 			CleanupRareHermes(vehicle);
-			if (modelId == 474 && CGeneral::GetRandomNumberInRange(0, 2) == 0) {
+			if (modelId == 474 && CGeneral::GetRandomNumberInRange(0, 100) == 0) {
 				g_RareHermesSet.insert(vehicle);
 			}
 			};
