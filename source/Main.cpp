@@ -32,6 +32,7 @@
 #include <map>
 #include <set>
 #include <cmath>
+#include <chrono>
 
 using namespace plugin;
 
@@ -96,10 +97,19 @@ public:
 	static inline tChatAdd OriginalChatAdd = nullptr;
 	static inline void* g_ChatInstance = nullptr;
 
-	// Vehicle distort
+	// Rare Hermes
+	static inline std::map<CVehicle*, std::vector<CObject*>> g_RareHermesLights;
+	static inline std::set<CVehicle*> g_RareHermesSet;
+	static inline std::set<CVehicle*> g_CheckedVehicles;
+
+	// Distortion
+	static inline bool  g_bEnablePeds = false;
+	static inline float g_fPedSpeed = 0.013f;
+	static inline float g_fPedStrength = 0.15f;
+
 	static inline bool  g_bEnableVehicles = false;
-	static inline float g_fVehSpeed = 0.012f;
-	static inline float g_fVehStrength = 0.25f;
+	static inline float g_fVehSpeed = 0.013f;
+	static inline float g_fVehStrength = 0.15f;
 
 	// Paintings state
 	static inline bool g_PaintModeActive = false;
@@ -266,6 +276,15 @@ public:
 					SendLocalChat("Vehicle distortion enabled", 0xFFFFAAAA);
 				else
 					SendLocalChat("Vehicle distortion disabled", 0xFFFFAAAA);
+				return;
+			}
+
+			if (strcmp(cmdText, "/distortpeds") == 0) {
+				g_bEnablePeds = !g_bEnablePeds;
+				if (g_bEnablePeds)
+					SendLocalChat("Peds distortion enabled", 0xFFFFAAAA);
+				else
+					SendLocalChat("Peds distortion disabled", 0xFFFFAAAA);
 				return;
 			}
 		}
@@ -706,9 +725,6 @@ public:
 	}
 
 	//////////////////////// RARE HERMES ////////////////////////
-	static inline std::map<CVehicle*, std::vector<CObject*>> g_RareHermesLights;
-	static inline std::set<CVehicle*> g_RareHermesSet;
-
 	static CObject* SpawnAndAttachLightPair(CVehicle* vehicle, int modelId, float offsetX, float offsetY, float offsetZ, float scale) {
 		if (!vehicle)
 			return nullptr;
@@ -742,7 +758,7 @@ public:
 
 	static void SetupRareHermes(CVehicle* vehicle) {
 		// Init & basic tuning
-		if (!vehicle || vehicle->m_nModelIndex != 474 || g_RareHermesSet.count(vehicle))
+		if (!vehicle || vehicle->m_nModelIndex != 474)
 			return;
 
 		CVehicleModelInfo* vehModelInfo = static_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(vehicle->m_nModelIndex));
@@ -795,17 +811,30 @@ public:
 		CStreaming::SetModelIsDeletable(lightModelId);
 	}
 
-	static void SetDealerDriver(CPed* driver) {
-		auto pedId = 87;
-
-		if (!driver || driver->IsPlayer() || driver->m_nModelIndex == pedId)
+	static void SetDealerDriver(CVehicle* vehicle) {
+		if (!vehicle)
 			return;
 
+		CPed* driver = vehicle->m_pDriver;
+		if (!driver || driver->IsPlayer() || driver->m_nModelIndex == 87)
+			return;
+
+		int vehHandle = CPools::GetVehicleRef(vehicle);
+		if (vehHandle == -1)
+			return;
+
+		const int pedId = 87;
 		CStreaming::RequestModel(pedId, GAME_REQUIRED);
 		CStreaming::LoadAllRequestedModels(false);
 
 		if (CStreaming::ms_aInfoForModel[pedId].m_nLoadState == LOADSTATE_LOADED) {
-			driver->SetModelIndex(pedId);
+			int oldPedHandle = CPools::GetPedRef(driver);
+			if (oldPedHandle != -1) {
+				Command<Commands::DELETE_CHAR>(oldPedHandle);
+			}
+
+			int newPedHandle = 0;
+			Command<Commands::CREATE_CHAR_INSIDE_CAR>(vehHandle, 5, pedId, &newPedHandle);
 			CStreaming::SetModelIsDeletable(pedId);
 		}
 	}
@@ -830,12 +859,24 @@ public:
 	}
 
 	//////////////////////// VEHICLE DISTORTION ////////////////////////
-	static void CalculateSquashScale(float speed, float strength, unsigned int offset, float& outScaleXY, float& outScaleZ) {
-		float time = (CTimer::m_snTimeInMilliseconds + offset) * speed;
-		outScaleZ = 1.0f + std::sin(time) * strength;
+	static void CalculateSquashScale(float speed, float strength, uintptr_t offset, float& outScaleXY, float& outScaleZ) {
+		static auto s_startTime = std::chrono::high_resolution_clock::now();
+		auto now = std::chrono::high_resolution_clock::now();
+
+		double timeMs = std::chrono::duration<double, std::milli>(now - s_startTime).count();
+
+		double safeOffset = static_cast<double>(offset % 10000);
+		double phase = (timeMs + safeOffset) * speed;
+
+		float wave = static_cast<float>(std::sin(phase)) * strength;
+
+		outScaleZ = 1.0f + wave;
 		if (outScaleZ < 0.1f)
 			outScaleZ = 0.1f;
-		outScaleXY = 1.0f / std::sqrt(outScaleZ);
+
+		outScaleXY = 1.0f - wave * 0.5f;
+		if (outScaleXY < 0.1f)
+			outScaleXY = 0.1f;
 	}
 
 	static void ApplyMatrixScale(RwMatrix* matrix, float scaleXY, float scaleZ) {
@@ -866,6 +907,7 @@ public:
 		SendLocalChat("/sing - random song humming", 0xFFFFAAAA);
 		SendLocalChat("/taunt - random phrase speaking", 0xFFFFAAAA);
 		SendLocalChat("/distortcars - applies funny squashing effect on vehicle models", 0xFFFFAAAA);
+		SendLocalChat("/distortpeds - applies funny squashing effect on peds models", 0xFFFFAAAA);
 		SendLocalChat("<For SA : COOP v0.3.4>", 0xFFFFAACC);
 	}
 
@@ -874,24 +916,81 @@ public:
 		Events::gameProcessEvent += ProcessSprayPainting;
 		Events::drawingEvent += RenderPaintProgress;
 
-		Events::vehicleSetModelEvent += [](CVehicle* vehicle, int modelId) {
-			CleanupRareHermes(vehicle);
-			if (modelId == 474 && CGeneral::GetRandomNumberInRange(0, 100) == 0) {
-				SetupRareHermes(vehicle);
-			}
+		Events::reInitGameEvent += []() {
+			g_RareHermesSet.clear();
 			};
 
-		Events::gameProcessEvent += []() {
-			for (CVehicle* vehicle : g_RareHermesSet) {
-				if (vehicle && CPools::ms_pVehiclePool->IsObjectValid(vehicle) && vehicle->m_pDriver) {
-					if (!vehicle->m_pDriver->IsPlayer() && vehicle->m_pDriver->m_nModelIndex != 87) {
-						SetDealerDriver(vehicle->m_pDriver);
-					}
+		Events::vehicleSetModelEvent += [](CVehicle* vehicle, int modelId) {
+			CleanupRareHermes(vehicle);
+			if (modelId == 474) {
+				if (rand() % 100 == 0) {
+					g_RareHermesSet.insert(vehicle);
 				}
 			}
 			};
 
+		Events::vehicleSetModelEvent += [](CVehicle* vehicle, int modelId) {
+			CleanupRareHermes(vehicle);
+			if (modelId == 474 && CGeneral::GetRandomNumberInRange(0, 2) == 0) {
+				g_RareHermesSet.insert(vehicle);
+			}
+			};
+
+		Events::gameProcessEvent += []() {
+			if (!CPools::ms_pVehiclePool || !CPools::ms_pPedPool)
+				return;
+
+			CVehicle* playerVeh = FindPlayerVehicle(-1, false);
+
+			for (auto it = g_RareHermesSet.begin(); it != g_RareHermesSet.end(); ) {
+				CVehicle* vehicle = *it;
+
+				if (!vehicle || !CPools::ms_pVehiclePool->IsObjectValid(vehicle)) {
+					it = g_RareHermesSet.erase(it);
+					continue;
+				}
+
+				if (!vehicle->m_pRwClump) {
+					++it;
+					continue;
+				}
+
+				// FIX: to use this snippet for rare Hermes check need to disable random for garage loaded cars first
+				//bool hasRareWheels = false;
+				//short* upg = vehicle->m_anUpgrades;
+				//for (int i = 0; i < 15; ++i) {
+				//	if (*(upg + i) == 1078) {
+				//		hasRareWheels = true;
+				//		break;
+				//	}
+				//}
+
+				//bool isSavedRare = (vehicle->m_nCreatedBy != 1 &&
+				//	vehicle->m_nPrimaryColor == 1 &&
+				//	vehicle->m_nSecondaryColor == 3 &&
+				//	hasRareWheels);
+
+				//if ((vehicle->m_nCreatedBy != 1 && !isSavedRare) || vehicle == playerVeh) {
+				if ((vehicle->m_nCreatedBy != 1) || vehicle == playerVeh) {
+					it = g_RareHermesSet.erase(it);
+					continue;
+				}
+
+				if (vehicle->m_pRwClump && !g_RareHermesLights.count(vehicle)) {
+					SetupRareHermes(vehicle);
+				}
+
+				if (vehicle->m_pDriver && CPools::ms_pPedPool->IsObjectValid(vehicle->m_pDriver)) {
+					if (!vehicle->m_pDriver->IsPlayer() && vehicle->m_pDriver->m_nModelIndex != 87) {
+						SetDealerDriver(vehicle);
+					}
+				}
+				++it;
+			}
+			};
+
 		Events::vehicleDtorEvent += [](CVehicle* vehicle) {
+			g_CheckedVehicles.erase(vehicle);
 			CleanupRareHermes(vehicle);
 			};
 
@@ -902,13 +1001,76 @@ public:
 			RwFrame* frame = reinterpret_cast<RwFrame*>(vehicle->m_pRwClump->object.parent);
 			if (frame) {
 				float scaleXY, scaleZ;
-				CalculateSquashScale(g_fVehSpeed, g_fVehStrength, reinterpret_cast<unsigned int>(vehicle), scaleXY, scaleZ);
+				CalculateSquashScale(g_fVehSpeed, g_fVehStrength, reinterpret_cast<uintptr_t>(vehicle), scaleXY, scaleZ);
 
 				RwMatrix* matrix = RwFrameGetMatrix(frame);
+
+				CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(vehicle->m_nModelIndex);
+				float bottomZ = (modelInfo && modelInfo->m_pColModel)
+					? modelInfo->m_pColModel->m_boundBox.m_vecMin.z
+					: -0.9f;
+
+				float offsetZ = -bottomZ * (scaleZ - 1.0f);
+
+				matrix->pos.x += matrix->at.x * offsetZ;
+				matrix->pos.y += matrix->at.y * offsetZ;
+				matrix->pos.z += matrix->at.z * offsetZ;
+
 				ApplyMatrixScale(matrix, scaleXY, scaleZ);
 				RwFrameUpdateObjects(frame);
 			}
 			};
+
+		Events::pedRenderEvent.before += [](CPed* ped) {
+			if (!g_bEnablePeds || !ped || !ped->m_pRwClump)
+				return;
+
+			RpHAnimHierarchy* hierarchy = GetAnimHierarchyFromSkinClump(ped->m_pRwClump);
+			if (!hierarchy)
+				return;
+
+			RwMatrix* boneMatrices = RpHAnimHierarchyGetMatrixArray(hierarchy);
+			if (!boneMatrices || hierarchy->numNodes <= 0)
+				return;
+
+			float scaleXY, scaleZ;
+			CalculateSquashScale(g_fPedSpeed, g_fPedStrength, reinterpret_cast<uintptr_t>(ped), scaleXY, scaleZ);
+
+			RwV3d pivotPos = boneMatrices[0].pos;
+
+			float minZ = boneMatrices[0].pos.z;
+			for (int i = 1; i < hierarchy->numNodes; ++i) {
+				if (boneMatrices[i].pos.z < minZ) {
+					minZ = boneMatrices[i].pos.z;
+				}
+			}
+			pivotPos.z = minZ - 0.08f;
+
+			for (int i = 0; i < hierarchy->numNodes; ++i) {
+				RwV3dNormalize(&boneMatrices[i].right, &boneMatrices[i].right);
+				RwV3dNormalize(&boneMatrices[i].up, &boneMatrices[i].up);
+				RwV3dNormalize(&boneMatrices[i].at, &boneMatrices[i].at);
+
+				boneMatrices[i].right.x *= scaleXY;
+				boneMatrices[i].right.y *= scaleXY;
+				boneMatrices[i].right.z *= scaleZ;
+
+				boneMatrices[i].up.x *= scaleXY;
+				boneMatrices[i].up.y *= scaleXY;
+				boneMatrices[i].up.z *= scaleZ;
+
+				boneMatrices[i].at.x *= scaleXY;
+				boneMatrices[i].at.y *= scaleXY;
+				boneMatrices[i].at.z *= scaleZ;
+
+				boneMatrices[i].pos.x = pivotPos.x + (boneMatrices[i].pos.x - pivotPos.x) * scaleXY;
+				boneMatrices[i].pos.y = pivotPos.y + (boneMatrices[i].pos.y - pivotPos.y) * scaleXY;
+				boneMatrices[i].pos.z = pivotPos.z + (boneMatrices[i].pos.z - pivotPos.z) * scaleZ;
+			}
+			};
+
+		// TODO: sync drivers with their cars (if both distortions are active)
+		// TODO: sync light coronas with cars (if cars distortion is active)
 
 		// TODO: display on original chat created?
 		//SendLocalChat("<WeirdFuncs>", 0xFFFFAACC);

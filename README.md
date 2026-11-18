@@ -15,6 +15,7 @@ A simple script written for personal use, may come in handy for somebody as well
 * `/sing` — Makes CJ hum a song.
 * `/taunt` — Makes CJ say some weird phrase.
 * `/distortcars` — Applies funny squashing effect on vehicle models.
+* `/distortpeds` — Applies funny squashing effect on player and ped models.
 
 ## Features
 Added unnecessary tuned Hermes spawn chance because I like Hermes. :›
