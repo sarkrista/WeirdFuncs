@@ -1,6 +1,6 @@
 # WeirdFuncs
 
-A simple script written for personal use, may come in handy for somebody as well. Requires the GTA SA:COOP mod.
+A simple script written for personal use. Requires the GTA SA:COOP mod, as its chat is used as built-in commands input.
 
 ## Commands
 
